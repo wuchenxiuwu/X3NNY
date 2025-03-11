@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TXT文件搜索</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        form {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 8px 15px;
+        }
+        select {
+            margin-right: 10px;
+            padding: 8px;
+        }
+        #results {
+            margin-top: 20px;
+        }
+        .search-result {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .search-result h3 {
+            margin: 0 0 10px 0;
+            padding: 0;
+        }
+        .search-result p {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        button.preview-btn {
+            margin-top: 10px;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>搜索TXT文件</h1>
+    <form method="post" action="/search" id="searchForm">
+        <input type="text" name="query" placeholder="输入关键词搜索" required list="searchSuggestions">
+        <select name="searchScope">
+            <option value="all">全部文件</option>
+            <option value="docs">文档文件夹</option>
+            <option value="data">数据文件夹</option>
+        </select>
+        <button type="submit">搜索</button>
+    </form>
+    <datalist id="searchSuggestions"></datalist>
+    <div id="results"></div>
+
+    <script>
+        // 页面加载时从本地存储中获取搜索历史
+        window.addEventListener('load', function() {
+            const searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
+            updateSearchSuggestions(searchHistory);
+        });
+
+        function updateSearchSuggestions(suggestions) {
+            let suggestionsHTML = '';
+            if (suggestions.length > 0) {
+                suggestions.forEach(suggestion => {
+                    suggestionsHTML += `<option value="${suggestion}"></option>`;
+                });
+            }
+            document.getElementById('searchSuggestions').innerHTML = suggestionsHTML;
+        }
+
+        document.querySelector('input[name="query"]').addEventListener('input', function() {
+            const keyword = this.value;
+            if (keyword.trim() === '') return;
+
+            // 获取搜索历史作为建议
+            const searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
+            const filteredSuggestions = searchHistory.filter(item => item.includes(keyword));
+
+            updateSearchSuggestions(filteredSuggestions);
+        });
+
+        document.getElementById('searchForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            const keyword = formData.get('query');
+            
+            // 将搜索关键词保存到本地存储
+            const searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
+            if (!searchHistory.includes(keyword)) {
+                searchHistory.push(keyword);
+                localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
+            }
+
+            // 执行搜索请求
+            fetch(this.action, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                let resultsHTML = '<h2>搜索结果：</h2>';
+                if (data.results.length > 0) {
+                    data.results.forEach(result => {
+                        const highlightedName = highlightKeyword(result, keyword);
+                        resultsHTML += `
+                            <div class="search-result">
+                                <h3>${highlightedName}</h3>
+                                <p>${result.substring(0, 100)}...</p>
+                                <button class="preview-btn" onclick="previewFile('${result.id}')">预览文件</button>
+                            </div>
+                        `;
+                    });
+                } else {
+                    resultsHTML += '<p>没有找到相关结果。</p>';
+                }
+                document.getElementById('results').innerHTML = resultsHTML;
+            });
+        });
+
+        function highlightKeyword(text, keyword) {
+            if (!keyword) return text;
+            const regex = new RegExp(keyword, 'gi');
+            return text.replace(regex, match => `<span style="background-color: yellow;">${match}</span>`);
+        }
+
+        function previewFile(fileId) {
+            fetch(`/preview?path=${encodeURIComponent(fileId)}`)
+                .then(response => response.json())
+                .then(data => {
+                    alert(`文件预览：\n${data.content.substring(0, 200)}...`);
+                });
+        }
+    </script>
+</body>
+</html>
